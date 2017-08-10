@@ -988,13 +988,23 @@ static long WlanConnect()
 {
 	SlSecParams_t secParams = { 0 };
 	long lRetVal = 0;
+	unsigned char policyVal;
 
 	secParams.Key = (signed char*)SECURITY_KEY;
 	secParams.KeyLen = strlen(SECURITY_KEY);
 	secParams.Type = SECURITY_TYPE;
 
-	lRetVal = sl_WlanConnect((signed char*)SSID_NAME, strlen(SSID_NAME), 0, &secParams, 0);
+	//	Ìí¼ÓProfile
+	lRetVal = sl_WlanProfileAdd(SSID_NAME,strlen(SSID_NAME),0,&secParams,0,0,0);
 	ASSERT_ON_ERROR(lRetVal);
+
+	//Set the Connection Policy
+	lRetVal = sl_WlanPolicySet(SL_POLICY_CONNECTION,SL_CONNECTION_POLICY(1,1,0,0,0),&policyVal, 1);
+	ASSERT_ON_ERROR(lRetVal);
+
+	// Connect to the AP
+	//	lRetVal = sl_WlanConnect((signed char*)SSID_NAME, strlen(SSID_NAME), 0, &secParams, 0);
+	//	ASSERT_ON_ERROR(lRetVal);
 
 	// Wait for WLAN Event
 	while ((!IS_CONNECTED(g_ulStatus)) || (!IS_IP_ACQUIRED(g_ulStatus)))
@@ -1103,13 +1113,13 @@ void WlanStationMode(void *pvParameters)
 
 	while(FOREVER){
 		memset(g_recvBuf, '\0', sizeof(g_recvBuf));
-		UART_PRINT("LOOP\n");
+		UART_PRINT("LOOP\n\r");
 		int iStatus = sl_Connect(g_sockID, (SlSockAddr_t *)&g_sAddr, g_iAddrSize);
 		if (iStatus < 0)
 		{
 			// error
 			sl_Close(g_sockID);
-			UART_PRINT("CONNECT_ERROR\n");
+			UART_PRINT("CONNECT_ERROR\n\r");
 		}
 		sl_Recv(g_sockID, g_recvBuf, 60, 0);
 		UART_PRINT("%s\n", g_recvBuf);
