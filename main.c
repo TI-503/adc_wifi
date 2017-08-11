@@ -618,6 +618,8 @@ int BsdTcpClient(unsigned short usPort)
 		ASSERT_ON_ERROR(SOCKET_CREATE_ERROR);
 	}
 
+
+
 	// connecting to TCP server
 	iStatus = sl_Connect(iSockID, (SlSockAddr_t *)&sAddr, iAddrSize);
 	if (iStatus < 0)
@@ -625,9 +627,15 @@ int BsdTcpClient(unsigned short usPort)
 		// error
 		sl_Close(iSockID);
 		ASSERT_ON_ERROR(CONNECT_ERROR);
+		return -1;
 	}
 
 	g_sockID = iSockID;
+
+//	SlSockNonblocking_t enableOption;
+//	enableOption.NonblockingEnabled = 1;
+//	sl_SetSockOpt(iSockID,SL_SOL_SOCKET,SL_SO_NONBLOCKING, (_u8 *)&enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
+
 	//iStatus = sl_Close(iSockID);
 	//closing the socket after sending 1000 packets
 	//ASSERT_ON_ERROR(iStatus);
@@ -1090,8 +1098,8 @@ void WlanStationMode(void *pvParameters)
 
 	connect_flag = 1;
 
-	//SendThread(NULL);
-
+	SendThread(NULL);
+	sl_Close(g_sockID);
 	//	Rotate('+');
 	//	delaySec(3.75);
 	//	Forward();
@@ -1108,20 +1116,14 @@ void WlanStationMode(void *pvParameters)
 	sl_SetSockOpt(g_sockID,SL_SOL_SOCKET,SL_SO_NONBLOCKING, (_u8 *)&enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
 
 	while(FOREVER){
+		//sl_Close(g_sockID);
+
+		GPIO_IF_LedOff(MCU_ALL_LED_IND);
 		memset(g_recvBuf, '\0', sizeof(g_recvBuf));
-		UART_PRINT("LOOP\n\r");
+		UART_PRINT("\n\r=================\n\rLOOP\n\r");
 		int iStatus;
 
-//		iStatus = sl_Connect(g_sockID, (SlSockAddr_t *)&g_sAddr, g_iAddrSize);
-//		if (iStatus < 0)
-//		{
-//			// error
-//			sl_Close(g_sockID);
-//			UART_PRINT("CONNECT_ERROR\n\r");
-//			SendThread(NULL);
-//		}
-
-		SendThread(NULL);
+		BsdTcpClient(g_uiPortNum);
 
 //		enableOption.NonblockingEnabled = 1;
 //		sl_SetSockOpt(g_sockID,SL_SOL_SOCKET,SL_SO_NONBLOCKING, (_u8 *)&enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
@@ -1132,7 +1134,7 @@ void WlanStationMode(void *pvParameters)
 		UART_PRINT("Sent: %s\n\r", g_cBsdBuf);
 
 		//Receive responding
-		memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+		//memset(g_recvBuf, '\0', sizeof(g_recvBuf));
 		iStatus = sl_Recv(g_sockID, g_recvBuf, 60, 0);
 		UART_PRINT("Recv: %s\n\r", g_recvBuf);
 		if (iStatus < 0)
@@ -1142,7 +1144,7 @@ void WlanStationMode(void *pvParameters)
 			UART_PRINT("RECEIVE_ERROR\n\r");
 			//SendThread(NULL);
 		}
-
+		//osi_Sleep(50);
 		sl_Close(g_sockID);
 
 
@@ -1152,7 +1154,7 @@ void WlanStationMode(void *pvParameters)
 				{
 					Timeb=Timeb+16;
 					ulSampleb = MAP_ADCFIFORead(ADC_BASE, uiChannelb);
-					if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.15)
+					if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.12)
 					{
 						flagb=1;
 					}
@@ -1162,7 +1164,7 @@ void WlanStationMode(void *pvParameters)
 				{
 					Timec=Timec+16;
 					ulSamplec = MAP_ADCFIFORead(ADC_BASE, uiChannelc);
-					if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.15)
+					if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.12)
 					{
 						flagc=1;
 					}
@@ -1172,7 +1174,7 @@ void WlanStationMode(void *pvParameters)
 				{
 					Timed=Timed+16;
 					ulSampled = MAP_ADCFIFORead(ADC_BASE, uiChanneld);
-					if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.15)
+					if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.12)
 					{
 						flagd=1;
 					}
@@ -1181,15 +1183,15 @@ void WlanStationMode(void *pvParameters)
 				if(flagb==1 && flagc==1)
 				{
 					Time = Timeb - Timec;
-					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n",Time);
+					UART_PRINT("b = %f\n\r",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("c = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n\r",Time);
 					angle=340*Time/1000000.0/0.41;
 					angle = acos(angle)*180.0/3.1416;
 					angle = 360-120-angle;
 					if(360-angle>=0 && 360-angle<=360){
 
-						SendThread(NULL);
+						BsdTcpClient(g_uiPortNum);
 
 						//Send angle value packet
 						sprintf(g_cBsdBuf, "angle%lf", angle);
@@ -1210,6 +1212,7 @@ void WlanStationMode(void *pvParameters)
 					Timed=0;
 					Timec=0;
 					angle=0;
+					Time=0;
 					//MAP_UtilsDelay(5*8000000);
 					break;
 				}
@@ -1217,48 +1220,14 @@ void WlanStationMode(void *pvParameters)
 				else if(flagb==1 && flagd==1)
 				{
 					Time = Timeb - Timed;
-					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("d = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n",Time);
+					UART_PRINT("b = %f\n\r",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n\r",Time);
 					angle=340*Time/1000000.0/0.41;
 					angle = acos(angle)*180.0/3.1416;
 					if(360-angle>=0 && 360-angle<=360){
 
-						SendThread(NULL);
-
-						//Send angle value packet
-						sprintf(g_cBsdBuf, "angle%lf", angle);
-						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
-						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
-
-						//Receive responding
-						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
-						sl_Recv(g_sockID, g_recvBuf, 60, 0);
-						UART_PRINT("Recv: %s\n\r", g_recvBuf);
-					}
-					flagb=0;
-					flagc=0;
-					flagd=0;
-					Timeb=0;
-					Timed=0;
-					Timec=0;
-					angle=0;
-					//MAP_UtilsDelay(5*8000000);
-					break;
-				}
-
-				else if(flagc==1 && flagd==1)
-				{
-					Time = Timec - Timed;
-					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("d = %f\n",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n",Time);
-					angle=340*Time/1000000.0/0.41;
-					angle = acos(angle)*180.0/3.1416;
-					angle = 360-angle;
-					if(360-angle>=0 && 360-angle<=360){
-
-						SendThread(NULL);
+						BsdTcpClient(g_uiPortNum);
 
 						//Send angle value packet
 						sprintf(g_cBsdBuf, "angle%lf", angle);
@@ -1279,15 +1248,53 @@ void WlanStationMode(void *pvParameters)
 					Timed=0;
 					Timec=0;
 					angle=0;
+					Time=0;
+					//MAP_UtilsDelay(5*8000000);
+					break;
+				}
+
+				else if(flagc==1 && flagd==1)
+				{
+					Time = Timec - Timed;
+					UART_PRINT("c = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n\r",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n\r",Time);
+					angle=340*Time/1000000.0/0.41;
+					angle = acos(angle)*180.0/3.1416;
+					angle = 360-angle;
+					if(360-angle>=0 && 360-angle<=360){
+
+						BsdTcpClient(g_uiPortNum);
+
+						//Send angle value packet
+						sprintf(g_cBsdBuf, "angle%lf", angle);
+						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
+						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
+
+						//Receive responding
+						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+						sl_Recv(g_sockID, g_recvBuf, 60, 0);
+						UART_PRINT("Recv: %s\n\r", g_recvBuf);
+
+						sl_Close(g_sockID);
+					}
+					flagb=0;
+					flagc=0;
+					flagd=0;
+					Timeb=0;
+					Timed=0;
+					Timec=0;
+					angle=0;
+					Time=0;
 					//MAP_UtilsDelay(5*8000000);
 					break;
 				}
 			}
 
-			UART_PRINT("End Recv adcstart OK!\n");
+			UART_PRINT("End Recv adcstart OK!\n\r======================\n\r");
 		}
-		//sl_Close(g_sockID);
-		osi_Sleep(2000);
+
+		osi_Sleep(500);
 
 	}
 
@@ -1386,7 +1393,7 @@ void main()
 	//
 	// Pinmux for the selected ADC input pin
 	//
-	MAP_PinTypeADC(PIN_57,PIN_MODE_255);
+//	MAP_PinTypeADC(PIN_57,PIN_MODE_255);
 	MAP_PinTypeADC(PIN_58,PIN_MODE_255);
 	MAP_PinTypeADC(PIN_59,PIN_MODE_255);
 	MAP_PinTypeADC(PIN_60,PIN_MODE_255);
@@ -1394,14 +1401,14 @@ void main()
 	//
 	// Convert pin number to channel number
 	//
-	uiChannela = ADC_CH_0;
+//	uiChannela = ADC_CH_0;
 	uiChannelb = ADC_CH_1;
 	uiChannelc = ADC_CH_2;
 	uiChanneld = ADC_CH_3;
 	//
 	// Enable ADC channel
 	//
-	MAP_ADCChannelEnable(ADC_BASE, uiChannela);
+//	MAP_ADCChannelEnable(ADC_BASE, uiChannela);
 	MAP_ADCChannelEnable(ADC_BASE, uiChannelb);
 	MAP_ADCChannelEnable(ADC_BASE, uiChannelc);
 	MAP_ADCChannelEnable(ADC_BASE, uiChanneld);
