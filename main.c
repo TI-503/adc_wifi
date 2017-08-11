@@ -1090,7 +1090,7 @@ void WlanStationMode(void *pvParameters)
 
 	connect_flag = 1;
 
-	SendThread(NULL);
+	//SendThread(NULL);
 
 	//	Rotate('+');
 	//	delaySec(3.75);
@@ -1107,129 +1107,187 @@ void WlanStationMode(void *pvParameters)
 	enableOption.NonblockingEnabled = 1;
 	sl_SetSockOpt(g_sockID,SL_SOL_SOCKET,SL_SO_NONBLOCKING, (_u8 *)&enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
 
-	memset(g_cBsdBuf, '\0', sizeof(g_cBsdBuf));
-	sprintf(g_cBsdBuf, "sounddw\n", angle);
-	sl_Send(g_sockID, g_cBsdBuf, 60, 0);
-
 	while(FOREVER){
 		memset(g_recvBuf, '\0', sizeof(g_recvBuf));
 		UART_PRINT("LOOP\n\r");
-		int iStatus = sl_Connect(g_sockID, (SlSockAddr_t *)&g_sAddr, g_iAddrSize);
+		int iStatus;
+
+//		iStatus = sl_Connect(g_sockID, (SlSockAddr_t *)&g_sAddr, g_iAddrSize);
+//		if (iStatus < 0)
+//		{
+//			// error
+//			sl_Close(g_sockID);
+//			UART_PRINT("CONNECT_ERROR\n\r");
+//			SendThread(NULL);
+//		}
+
+		SendThread(NULL);
+
+//		enableOption.NonblockingEnabled = 1;
+//		sl_SetSockOpt(g_sockID,SL_SOL_SOCKET,SL_SO_NONBLOCKING, (_u8 *)&enableOption,sizeof(enableOption)); // Enable/disable nonblocking mode
+
+		//Send heart-beat packet
+		sprintf(g_cBsdBuf, "sounddw");
+		sl_Send(g_sockID, g_cBsdBuf, 60, 0);
+		UART_PRINT("Sent: %s\n\r", g_cBsdBuf);
+
+		//Receive responding
+		memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+		iStatus = sl_Recv(g_sockID, g_recvBuf, 60, 0);
+		UART_PRINT("Recv: %s\n\r", g_recvBuf);
 		if (iStatus < 0)
 		{
 			// error
-			sl_Close(g_sockID);
-			UART_PRINT("CONNECT_ERROR\n\r");
+			//sl_Close(g_sockID);
+			UART_PRINT("RECEIVE_ERROR\n\r");
+			//SendThread(NULL);
 		}
-		sl_Recv(g_sockID, g_recvBuf, 60, 0);
-		UART_PRINT("%s\n", g_recvBuf);
+
+		sl_Close(g_sockID);
+
+
 		if(strcmp(g_recvBuf, "adcstart") == 0){
-			if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelb) && flagb==0)
-			{
-				Timeb=Timeb+16;
-				ulSampleb = MAP_ADCFIFORead(ADC_BASE, uiChannelb);
-				if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.15)
+			while(FOREVER){
+				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelb) && flagb==0)
 				{
-					flagb=1;
+					Timeb=Timeb+16;
+					ulSampleb = MAP_ADCFIFORead(ADC_BASE, uiChannelb);
+					if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.15)
+					{
+						flagb=1;
+					}
 				}
-			}
 
-			if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelc) && flagc==0)
-			{
-				Timec=Timec+16;
-				ulSamplec = MAP_ADCFIFORead(ADC_BASE, uiChannelc);
-				if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.15)
+				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelc) && flagc==0)
 				{
-					flagc=1;
+					Timec=Timec+16;
+					ulSamplec = MAP_ADCFIFORead(ADC_BASE, uiChannelc);
+					if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.15)
+					{
+						flagc=1;
+					}
 				}
-			}
 
-			if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChanneld) && flagd==0)
-			{
-				Timed=Timed+16;
-				ulSampled = MAP_ADCFIFORead(ADC_BASE, uiChanneld);
-				if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.15)
+				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChanneld) && flagd==0)
 				{
-					flagd=1;
+					Timed=Timed+16;
+					ulSampled = MAP_ADCFIFORead(ADC_BASE, uiChanneld);
+					if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.15)
+					{
+						flagd=1;
+					}
+				}
+
+				if(flagb==1 && flagc==1)
+				{
+					Time = Timeb - Timec;
+					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n",Time);
+					angle=340*Time/1000000.0/0.41;
+					angle = acos(angle)*180.0/3.1416;
+					angle = 360-120-angle;
+					if(360-angle>=0 && 360-angle<=360){
+
+						SendThread(NULL);
+
+						//Send angle value packet
+						sprintf(g_cBsdBuf, "angle%lf", angle);
+						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
+						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
+
+						//Receive responding
+						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+						sl_Recv(g_sockID, g_recvBuf, 60, 0);
+						UART_PRINT("Recv: %s\n\r", g_recvBuf);
+
+						sl_Close(g_sockID);
+					}
+					flagb=0;
+					flagc=0;
+					flagd=0;
+					Timeb=0;
+					Timed=0;
+					Timec=0;
+					angle=0;
+					//MAP_UtilsDelay(5*8000000);
+					break;
+				}
+
+				else if(flagb==1 && flagd==1)
+				{
+					Time = Timeb - Timed;
+					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n",Time);
+					angle=340*Time/1000000.0/0.41;
+					angle = acos(angle)*180.0/3.1416;
+					if(360-angle>=0 && 360-angle<=360){
+
+						SendThread(NULL);
+
+						//Send angle value packet
+						sprintf(g_cBsdBuf, "angle%lf", angle);
+						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
+						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
+
+						//Receive responding
+						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+						sl_Recv(g_sockID, g_recvBuf, 60, 0);
+						UART_PRINT("Recv: %s\n\r", g_recvBuf);
+					}
+					flagb=0;
+					flagc=0;
+					flagd=0;
+					Timeb=0;
+					Timed=0;
+					Timec=0;
+					angle=0;
+					//MAP_UtilsDelay(5*8000000);
+					break;
+				}
+
+				else if(flagc==1 && flagd==1)
+				{
+					Time = Timec - Timed;
+					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("Time = %d\n",Time);
+					angle=340*Time/1000000.0/0.41;
+					angle = acos(angle)*180.0/3.1416;
+					angle = 360-angle;
+					if(360-angle>=0 && 360-angle<=360){
+
+						SendThread(NULL);
+
+						//Send angle value packet
+						sprintf(g_cBsdBuf, "angle%lf", angle);
+						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
+						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
+
+						//Receive responding
+						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
+						sl_Recv(g_sockID, g_recvBuf, 60, 0);
+						UART_PRINT("Recv: %s\n\r", g_recvBuf);
+
+						sl_Close(g_sockID);
+					}
+					flagb=0;
+					flagc=0;
+					flagd=0;
+					Timeb=0;
+					Timed=0;
+					Timec=0;
+					angle=0;
+					//MAP_UtilsDelay(5*8000000);
+					break;
 				}
 			}
 
-			if(flagb==1 && flagc==1)
-			{
-				Time = Timeb - Timec;
-				UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("Time = %d\n",Time);
-				angle=340*Time/1000000.0/0.41;
-				angle = acos(angle)*180.0/3.1416;
-				angle = 360-120-angle;
-				if(360-angle>=0 && 360-angle<=360){
-					UART_PRINT("angle%lf\n",angle);
-					memset(g_cBsdBuf, '\0', sizeof(g_cBsdBuf));
-					sprintf(g_cBsdBuf, "angle%lf\n", angle);
-					sl_Send(g_sockID, g_cBsdBuf, 60, 0);
-				}
-				flagb=0;
-				flagc=0;
-				flagd=0;
-				Timeb=0;
-				Timed=0;
-				Timec=0;
-				angle=0;
-				//MAP_UtilsDelay(5*8000000);
-			}
-
-			else if(flagb==1 && flagd==1)
-			{
-				Time = Timeb - Timed;
-				UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("d = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("Time = %d\n",Time);
-				angle=340*Time/1000000.0/0.41;
-				angle = acos(angle)*180.0/3.1416;
-				if(360-angle>=0 && 360-angle<=360){
-					UART_PRINT("angle%lf\n",angle);
-					memset(g_cBsdBuf, '\0', sizeof(g_cBsdBuf));
-					sprintf(g_cBsdBuf, "angle%lf\n", angle);
-					sl_Send(g_sockID, g_cBsdBuf, 60, 0);
-				}
-				flagb=0;
-				flagc=0;
-				flagd=0;
-				Timeb=0;
-				Timed=0;
-				Timec=0;
-				angle=0;
-				//MAP_UtilsDelay(5*8000000);
-			}
-
-			else if(flagc==1 && flagd==1)
-			{
-				Time = Timec - Timed;
-				UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("d = %f\n",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
-				UART_PRINT("Time = %d\n",Time);
-				angle=340*Time/1000000.0/0.41;
-				angle = acos(angle)*180.0/3.1416;
-				angle = 360-angle;
-				if(360-angle>=0 && 360-angle<=360){
-					UART_PRINT("angle%lf\n",angle);
-					memset(g_cBsdBuf, '\0', sizeof(g_cBsdBuf));
-					sprintf(g_cBsdBuf, "angle%lf\n", angle);
-					sl_Send(g_sockID, g_cBsdBuf, 60, 0);
-				}
-				flagb=0;
-				flagc=0;
-				flagd=0;
-				Timeb=0;
-				Timed=0;
-				Timec=0;
-				angle=0;
-				//MAP_UtilsDelay(5*8000000);
-			}
-			UART_PRINT("Recv adcstart OK!\n");
+			UART_PRINT("End Recv adcstart OK!\n");
 		}
-		osi_Sleep(50);
+		//sl_Close(g_sockID);
+		osi_Sleep(2000);
 
 	}
 
