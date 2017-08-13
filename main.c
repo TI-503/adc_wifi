@@ -201,28 +201,32 @@ void wait_ms(long i)
 
 
 //    unsigned long  uiAdcInputPin;
-unsigned int  uiChannela;
 unsigned int  uiChannelb;
 unsigned int  uiChannelc;
 unsigned int  uiChanneld;
 unsigned int  uiIndex=0;
-float  za=0;
-float  zc=0;
-int  Timea=0;
-int  Timeb=0;
-int  Timec=0;
-int  Timed=0;
-int  Time=0;
-double angle=0;
 int  i;
-unsigned long ulSamplea;
 unsigned long ulSampleb;
 unsigned long ulSamplec;
 unsigned long ulSampled;
-int  flaga=0;
-int  flagb=0;
-int  flagd=0;
-int  flagc=0;
+unsigned int flagb=0;
+unsigned int flagc=0;
+unsigned int flagd=0;
+
+unsigned long Timeb1=0;
+unsigned long Timeb2=0;
+unsigned long Timeb=0;
+unsigned long Timed1=0;
+unsigned long Timed2=0;
+unsigned long Timed=0;
+unsigned long Timec1=0;
+unsigned long Timec2=0;
+unsigned long Timec=0;
+int countb=0;
+int countc=0;
+int countd=0;
+int Time=0;
+float angle=0;
 //*****************************************************************************
 //                 GLOBAL VARIABLES -- End
 //*****************************************************************************
@@ -1149,12 +1153,18 @@ void WlanStationMode(void *pvParameters)
 
 
 		if(strcmp(g_recvBuf, "adcstart") == 0){
+			GPIO_IF_LedOn(MCU_ALL_LED_IND);
 			while(FOREVER){
+	//			UART_PRINT("Time = %f\n",MAP_ADCTimerValueGet(ADC_BASE));
 				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelb) && flagb==0)
 				{
-					Timeb=Timeb+16;
 					ulSampleb = MAP_ADCFIFORead(ADC_BASE, uiChannelb);
-					if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.12)
+					Timeb1=Timeb2;
+					Timeb2=(ulSampleb)>>14;
+					if(Timeb2<Timeb1)
+						countb++;
+					Timeb = countb * 131072 + Timeb2;
+					if(((ulSampleb&0x3ffc)>>2)/4096.0*1.5<0.15)
 					{
 						flagb=1;
 					}
@@ -1162,9 +1172,13 @@ void WlanStationMode(void *pvParameters)
 
 				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChannelc) && flagc==0)
 				{
-					Timec=Timec+16;
 					ulSamplec = MAP_ADCFIFORead(ADC_BASE, uiChannelc);
-					if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.12)
+					Timec1=Timec2;
+					Timec2=(ulSamplec)>>14;
+					if(Timec2<Timec1)
+						countc++;
+					Timec = countc * 131072 + Timec2;
+					if(((ulSamplec&0x3ffc)>>2)/4096.0*1.5<0.15)
 					{
 						flagc=1;
 					}
@@ -1172,9 +1186,13 @@ void WlanStationMode(void *pvParameters)
 
 				if(MAP_ADCFIFOLvlGet(ADC_BASE, uiChanneld) && flagd==0)
 				{
-					Timed=Timed+16;
 					ulSampled = MAP_ADCFIFORead(ADC_BASE, uiChanneld);
-					if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.12)
+					Timed1=Timed2;
+					Timed2=(ulSampled)>>14;
+					if(Timed2<Timed1)
+						countd++;
+					Timed = countd * 131072 + Timed2;
+					if(((ulSampled&0x3ffc)>>2)/4096.0*1.5<0.15)
 					{
 						flagd=1;
 					}
@@ -1182,91 +1200,159 @@ void WlanStationMode(void *pvParameters)
 
 				if(flagb==1 && flagc==1)
 				{
-					Time = Timeb - Timec;
-					UART_PRINT("b = %f\n\r",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("c = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n\r",Time);
-					angle=340*Time/1000000.0/0.41;
-					angle = acos(angle)*180.0/3.1416;
-					angle = 360-120-angle;
-					if(360-angle>=0 && 360-angle<=360){
-
+					Time = Timec - Timeb;
+					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					if((Time)>=0)
+					{
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = asin(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 60 - angle + 120;
+	//					UART_PRINT("sin\n");
+					}
+					else
+					{
+						Time = Timeb - Timec;
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = acos(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 150-angle + 120;;
+	//					UART_PRINT("cos\n");
+					}
+					if(angle-120>=0 && angle-240<=0)
+					{
 						BsdTcpClient(g_uiPortNum);
 
-						//Send angle value packet
+					//Send angle value packet
 						sprintf(g_cBsdBuf, "angle%lf", angle);
 						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
 						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
 
-						//Receive responding
+					//Receive responding
 						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
 						sl_Recv(g_sockID, g_recvBuf, 60, 0);
 						UART_PRINT("Recv: %s\n\r", g_recvBuf);
 
 						sl_Close(g_sockID);
 					}
+//					UART_PRINT("angle%lf\n",angle);
 					flagb=0;
 					flagc=0;
 					flagd=0;
+
+					Timeb1=0;
+					Timeb2=0;
 					Timeb=0;
+					Timed1=0;
+					Timed2=0;
 					Timed=0;
+					Timec1=0;
+					Timec2=0;
 					Timec=0;
-					angle=0;
+					countb=0;
+					countc=0;
+					countd=0;
 					Time=0;
-					//MAP_UtilsDelay(5*8000000);
+					angle=0;
+//					MAP_UtilsDelay(2*8000000);
 					break;
 				}
 
 				else if(flagb==1 && flagd==1)
 				{
 					Time = Timeb - Timed;
-					UART_PRINT("b = %f\n\r",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("d = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n\r",Time);
-					angle=340*Time/1000000.0/0.41;
-					angle = acos(angle)*180.0/3.1416;
-					if(360-angle>=0 && 360-angle<=360){
-
+					UART_PRINT("b = %f\n",((ulSampleb&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
+					if((Time)>=0)
+					{
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = asin(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 60 - angle;
+	//					UART_PRINT("sin\n");
+					}
+					else
+					{
+						Time = Timed - Timeb;
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = acos(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 150-angle;
+	//					UART_PRINT("cos\n");
+					}
+					if(angle>=0 && angle-120<=0)
+					{
 						BsdTcpClient(g_uiPortNum);
 
-						//Send angle value packet
+					//Send angle value packet
 						sprintf(g_cBsdBuf, "angle%lf", angle);
 						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
 						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
 
-						//Receive responding
+					//Receive responding
 						memset(g_recvBuf, '\0', sizeof(g_recvBuf));
 						sl_Recv(g_sockID, g_recvBuf, 60, 0);
 						UART_PRINT("Recv: %s\n\r", g_recvBuf);
 
 						sl_Close(g_sockID);
 					}
-					flagb=0;
-					flagc=0;
-					flagd=0;
-					Timeb=0;
-					Timed=0;
-					Timec=0;
+//					UART_PRINT("angle%lf\n",angle);
+				    flagb=0;
+				    flagc=0;
+				    flagd=0;
+
+				    Timeb1=0;
+				    Timeb2=0;
+				    Timeb=0;
+				    Timed1=0;
+				    Timed2=0;
+				    Timed=0;
+				    Timec1=0;
+				    Timec2=0;
+				    Timec=0;
+				    countb=0;
+				    countc=0;
+				    countd=0;
+				    Time=0;
 					angle=0;
-					Time=0;
-					//MAP_UtilsDelay(5*8000000);
+//					MAP_UtilsDelay(2*8000000);
 					break;
 				}
 
 				else if(flagc==1 && flagd==1)
 				{
-					Time = Timec - Timed;
-					UART_PRINT("c = %f\n\r",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("d = %f\n\r",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
-					UART_PRINT("Time = %d\n\r",Time);
-					angle=340*Time/1000000.0/0.41;
-					angle = acos(angle)*180.0/3.1416;
-					angle = 360-angle;
-					if(360-angle>=0 && 360-angle<=360){
-
+					Time = Timed - Timec;
+					UART_PRINT("c = %f\n",((ulSamplec&0x3ffc)>>2)/4096.0*1.5);
+					UART_PRINT("d = %f\n",((ulSampled&0x3ffc)>>2)/4096.0*1.5);
+					if((Time)>=0)
+					{
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = asin(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 60 - angle + 240;
+	//					UART_PRINT("sin\n");
+					}
+					else
+					{
+						Time = Timec - Timed;
+						UART_PRINT("Time = %f\n",Time*0.025);
+						angle=340*Time*0.025/1000000.0/0.34;
+						angle = acos(angle)*180.0/3.1415926;
+	//					UART_PRINT("angle%lf\n",angle);
+						angle = 150-angle + 240;
+	//					UART_PRINT("cos\n");
+					}
+					if(angle-240>=0 && angle-360<=0)
+					{
 						BsdTcpClient(g_uiPortNum);
 
-						//Send angle value packet
+					//Send angle value packet
 						sprintf(g_cBsdBuf, "angle%lf", angle);
 						sl_Send(g_sockID, g_cBsdBuf, 60, 0);
 						UART_PRINT("Sent: %s\n\r",g_cBsdBuf);
@@ -1278,20 +1364,33 @@ void WlanStationMode(void *pvParameters)
 
 						sl_Close(g_sockID);
 					}
-					flagb=0;
-					flagc=0;
-					flagd=0;
-					Timeb=0;
-					Timed=0;
-					Timec=0;
+//					UART_PRINT("angle%lf\n",angle);
+				    flagb=0;
+				    flagc=0;
+				    flagd=0;
+
+				    Timeb1=0;
+				    Timeb2=0;
+				    Timeb=0;
+				    Timed1=0;
+				    Timed2=0;
+				    Timed=0;
+				    Timec1=0;
+				    Timec2=0;
+				    Timec=0;
+				    countb=0;
+				    countc=0;
+				    countd=0;
+				    Time=0;
 					angle=0;
-					Time=0;
-					//MAP_UtilsDelay(5*8000000);
+//					MAP_UtilsDelay(2*8000000);
 					break;
 				}
+	//			UART_PRINT("Recv adcstart OK!\n");
 			}
 
 			UART_PRINT("End Recv adcstart OK!\n\r======================\n\r");
+			GPIO_IF_LedOff(MCU_ALL_LED_IND);
 		}
 
 		osi_Sleep(500);
@@ -1430,15 +1529,27 @@ void main()
 	//
 	// Read 4096 ADC samples
 	//
-	flaga=0;
 	flagb=0;
 	flagc=0;
 	flagd=0;
-	Timea=0;
-	Timeb=0;
-	Timed=0;
-	Timec=0;
 
+	Timeb1=0;
+	Timeb2=0;
+	Timeb=0;
+	Timed1=0;
+	Timed2=0;
+	Timed=0;
+	Timec1=0;
+	Timec2=0;
+	Timec=0;
+	countb=0;
+	countc=0;
+	countd=0;
+	Time=0;
+	angle=0;
+    GPIO_IF_LedConfigure(LED1|LED2|LED3);
+
+    GPIO_IF_LedOff(MCU_ALL_LED_IND);
 	//
 	// Display Application Banner
 	//
